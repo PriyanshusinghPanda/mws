@@ -11,6 +11,8 @@ from app.core.dependencies import get_current_user
 from app.models.account import Account
 from app.models.project import Project
 from app.models.email import EmailMessage
+from app.services.email_queue import enqueue_email
+from app.services.rate_limiter import check_rate_limit
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
@@ -50,7 +52,11 @@ async def send_email(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # create email message in queued state
+    # rate limit check - 100 emails per hour per project
+    allowed = await check_rate_limit(str(body.project_id))
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Max 100 emails per hour.")
+
     email_msg = EmailMessage(
         project_id=body.project_id,
         to_address=body.to_address,
@@ -62,6 +68,7 @@ async def send_email(
     await db.commit()
     await db.refresh(email_msg)
 
-    # TODO: push to redis queue here
+    # push to redis queue for worker to pick up
+    await enqueue_email(str(email_msg.id))
 
     return email_msg
