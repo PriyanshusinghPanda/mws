@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from pydantic import BaseModel, EmailStr
 
 from app.core.database import get_db
@@ -32,6 +32,8 @@ class EmailResponse(BaseModel):
     subject: str
     status: str
     attempt_count: int
+    error_message: str | None = None
+    sent_at: datetime | None = None
     created_at: datetime
 
     class Config:
@@ -72,3 +74,50 @@ async def send_email(
     await enqueue_email(str(email_msg.id))
 
     return email_msg
+
+
+@router.get("/{email_id}", response_model=EmailResponse)
+async def get_email_status(
+    email_id: uuid.UUID,
+    account: Account = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(EmailMessage).where(EmailMessage.id == email_id))
+    email_msg = result.scalar_one_or_none()
+    if not email_msg:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    # make sure user owns this email's project
+    proj = await db.execute(
+        select(Project).where(Project.id == email_msg.project_id, Project.account_id == account.id)
+    )
+    if not proj.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    return email_msg
+
+
+@router.get("/logs/{project_id}", response_model=list[EmailResponse])
+async def get_email_logs(
+    project_id: uuid.UUID,
+    account: Account = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    page: int = 1,
+    per_page: int = 20,
+):
+    # verify project ownership
+    proj = await db.execute(
+        select(Project).where(Project.id == project_id, Project.account_id == account.id)
+    )
+    if not proj.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    offset = (page - 1) * per_page
+    result = await db.execute(
+        select(EmailMessage)
+        .where(EmailMessage.project_id == project_id)
+        .order_by(desc(EmailMessage.created_at))
+        .offset(offset)
+        .limit(per_page)
+    )
+    return result.scalars().all()
