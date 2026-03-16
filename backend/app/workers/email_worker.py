@@ -8,6 +8,7 @@ from app.core.database import async_session
 from app.models.email import EmailMessage
 from app.services.email_queue import dequeue_email
 from app.services.smtp_sender import send_smtp_email
+from app.services.retry import schedule_retry, MAX_RETRIES
 
 
 async def process_email(email_id: str):
@@ -42,12 +43,13 @@ async def process_email(email_id: str):
             print(f"failed to send email {email_id}: {e}")
             email_msg.error_message = str(e)
 
-            # if we haven't hit max retries, mark as queued so it gets retried
-            if email_msg.attempt_count < 3:
+            if email_msg.attempt_count < MAX_RETRIES:
                 email_msg.status = "queued"
+                # schedule retry with exponential backoff in background
+                asyncio.create_task(schedule_retry(email_id, email_msg.attempt_count))
             else:
                 email_msg.status = "failed"
-                print(f"email {email_id} permanently failed after 3 attempts")
+                print(f"email {email_id} permanently failed after {MAX_RETRIES} attempts")
 
         await session.commit()
 
