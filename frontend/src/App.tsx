@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Emails from './pages/Emails'
+import EmailDetail from './pages/EmailDetail'
 import Login from './pages/Login'
 import Register from './pages/Register'
 
@@ -25,6 +26,7 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="emails" element={<Emails />} />
+            <Route path="emails/:emailId" element={<EmailDetail />} />
           </Route>
         </Routes>
       </AuthProvider>

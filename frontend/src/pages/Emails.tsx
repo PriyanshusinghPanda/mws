@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import SendEmailModal from '../components/SendEmailModal'
 
@@ -20,6 +21,7 @@ const statusColors: Record<string, string> = {
 }
 
 export default function Emails() {
+  const navigate = useNavigate()
   const [emails, setEmails] = useState<Email[]>([])
   const [showModal, setShowModal] = useState(false)
   const [projectId, setProjectId] = useState<string>('')
@@ -101,7 +103,7 @@ export default function Emails() {
               </tr>
             ) : (
               emails.map((email) => (
-                <tr key={email.id} className="border-b last:border-0 hover:bg-gray-50">
+                <tr key={email.id} className="border-b last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/emails/${email.id}`)}>
                   <td className="px-4 py-3">{email.to_address}</td>
                   <td className="px-4 py-3">{email.subject}</td>
                   <td className="px-4 py-3">

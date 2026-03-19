@@ -36,7 +36,18 @@ services:
     volumes:
       - ./backend:/app
 
-  # TODO: add email worker container
+  worker-email:
+    build: ./backend
+    command: python -m app.workers.email_worker
+    depends_on:
+      - postgres
+      - redis
+      - mailpit
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+
   # TODO: add job worker container
 
 volumes:
