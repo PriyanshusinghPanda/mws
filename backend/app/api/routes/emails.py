@@ -10,9 +10,10 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.account import Account
 from app.models.project import Project
-from app.models.email import EmailMessage
+from app.models.email import EmailMessage, EmailTemplate
 from app.services.email_queue import enqueue_email
 from app.services.rate_limiter import check_rate_limit
+from jinja2 import Template as Jinja2Template
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
@@ -20,9 +21,9 @@ router = APIRouter(prefix="/api/emails", tags=["emails"])
 class SendEmailRequest(BaseModel):
     project_id: uuid.UUID
     to_address: EmailStr
-    subject: str
-    body_html: str
-    template_id: uuid.UUID | None = None  # TODO: implement template sending later
+    subject: str | None = None
+    body_html: str | None = None
+    template_id: uuid.UUID | None = None
     variables: dict | None = None
 
 
@@ -59,11 +60,30 @@ async def send_email(
     if not allowed:
         raise HTTPException(status_code=429, detail="Rate limit exceeded. Max 100 emails per hour.")
 
+    subject = body.subject
+    body_html = body.body_html
+
+    # if using a template, render it with variables
+    if body.template_id:
+        tmpl_result = await db.execute(
+            select(EmailTemplate).where(EmailTemplate.id == body.template_id)
+        )
+        template = tmpl_result.scalar_one_or_none()
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        variables = body.variables or {}
+        subject = Jinja2Template(template.subject).render(**variables)
+        body_html = Jinja2Template(template.body_html).render(**variables)
+
+    if not subject or not body_html:
+        raise HTTPException(status_code=400, detail="Subject and body are required (or use a template)")
+
     email_msg = EmailMessage(
         project_id=body.project_id,
         to_address=body.to_address,
-        subject=body.subject,
-        body_html=body.body_html,
+        subject=subject,
+        body_html=body_html,
         status="queued",
     )
     db.add(email_msg)

@@ -21,3 +21,4 @@ class Project(Base):
     email_messages = relationship("EmailMessage", back_populates="project", cascade="all, delete-orphan")
     email_templates = relationship("EmailTemplate", back_populates="project", cascade="all, delete-orphan")
     jobs = relationship("Job", back_populates="project", cascade="all, delete-orphan")
+    smtp_credential = relationship("SmtpCredential", back_populates="project", uselist=False, cascade="all, delete-orphan")

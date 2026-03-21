@@ -34,6 +34,7 @@ async def process_email(email_id: str):
                 to_address=email_msg.to_address,
                 subject=email_msg.subject,
                 body_html=email_msg.body_html,
+                project_id=str(email_msg.project_id),
             )
             email_msg.status = "sent"
             email_msg.sent_at = datetime.now(timezone.utc)
