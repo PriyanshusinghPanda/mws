@@ -5,6 +5,8 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Emails from './pages/Emails'
 import EmailDetail from './pages/EmailDetail'
+import Templates from './pages/Templates'
+import ConnectEmail from './pages/ConnectEmail'
 import Login from './pages/Login'
 import Register from './pages/Register'
 
@@ -27,6 +29,8 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="emails" element={<Emails />} />
             <Route path="emails/:emailId" element={<EmailDetail />} />
+            <Route path="templates" element={<Templates />} />
+            <Route path="connect-email" element={<ConnectEmail />} />
           </Route>
         </Routes>
       </AuthProvider>

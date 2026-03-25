@@ -4,6 +4,7 @@ const links = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/emails', label: 'Emails' },
   { to: '/templates', label: 'Templates' },
+  { to: '/connect-email', label: 'Connect Email' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/settings', label: 'Settings' },
 ]
