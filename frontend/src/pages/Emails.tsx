@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import api from '../lib/api'
+import { useProject } from '../context/ProjectContext'
 import SendEmailModal from '../components/SendEmailModal'
+import Toast from '../components/Toast'
 
 interface Email {
   id: string
@@ -12,7 +14,6 @@ interface Email {
   created_at: string
 }
 
-// colors for different statuses
 const statusColors: Record<string, string> = {
   queued: 'bg-yellow-100 text-yellow-800',
   processing: 'bg-blue-100 text-blue-800',
@@ -22,32 +23,19 @@ const statusColors: Record<string, string> = {
 
 export default function Emails() {
   const navigate = useNavigate()
+  const { currentProject, smtpConnected } = useProject()
   const [emails, setEmails] = useState<Email[]>([])
   const [showModal, setShowModal] = useState(false)
-  const [projectId, setProjectId] = useState<string>('')
-  const [projects, setProjects] = useState<any[]>([])
+  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
-    loadProjects()
-  }, [])
-
-  useEffect(() => {
-    if (projectId) loadEmails()
-  }, [projectId])
-
-  const loadProjects = async () => {
-    try {
-      const res = await api.get('/api/projects')
-      setProjects(res.data)
-      if (res.data.length > 0) setProjectId(res.data[0].id)
-    } catch (err) {
-      console.error('failed to load projects', err)
-    }
-  }
+    if (currentProject) loadEmails()
+  }, [currentProject])
 
   const loadEmails = async () => {
+    if (!currentProject) return
     try {
-      const res = await api.get(`/api/emails/logs/${projectId}`)
+      const res = await api.get(`/api/emails/logs/${currentProject.id}`)
       setEmails(res.data)
     } catch (err) {
       console.error('failed to load emails', err)
@@ -56,33 +44,44 @@ export default function Emails() {
 
   const handleSent = () => {
     setShowModal(false)
+    setToast('Email queued successfully!')
     loadEmails()
+  }
+
+  if (!currentProject) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500 mb-4">Create a project first to start sending emails.</p>
+        <Link to="/dashboard" className="text-blue-600 hover:underline">Go to Dashboard</Link>
+      </div>
+    )
   }
 
   return (
     <div>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Emails</h1>
-        <div className="flex gap-3">
-          <select
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            className="border rounded px-3 py-2 text-sm"
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
-          >
-            Send Email
-          </button>
-        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+        >
+          Send Email
+        </button>
       </div>
 
-      {/* email logs table */}
+      {!smtpConnected && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-4 flex justify-between items-center">
+          <p className="text-sm text-yellow-800">
+            No email connected. Emails will be sent from the default address.
+          </p>
+          <Link to="/connect-email" className="text-yellow-800 text-sm font-medium hover:underline">
+            Connect Email
+          </Link>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 border-b">
@@ -124,7 +123,7 @@ export default function Emails() {
 
       {showModal && (
         <SendEmailModal
-          projectId={projectId}
+          projectId={currentProject.id}
           onClose={() => setShowModal(false)}
           onSent={handleSent}
         />

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../lib/api'
+import { useProject } from '../context/ProjectContext'
+import Toast from '../components/Toast'
 
 interface Template {
   id: string
@@ -10,35 +12,25 @@ interface Template {
 }
 
 export default function Templates() {
+  const { currentProject } = useProject()
   const [templates, setTemplates] = useState<Template[]>([])
-  const [projects, setProjects] = useState<any[]>([])
-  const [projectId, setProjectId] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
-  // form state
   const [name, setName] = useState('')
   const [subject, setSubject] = useState('')
   const [bodyHtml, setBodyHtml] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
-    loadProjects()
-  }, [])
-
-  useEffect(() => {
-    if (projectId) loadTemplates()
-  }, [projectId])
-
-  const loadProjects = async () => {
-    const res = await api.get('/api/projects')
-    setProjects(res.data)
-    if (res.data.length > 0) setProjectId(res.data[0].id)
-  }
+    if (currentProject) loadTemplates()
+  }, [currentProject])
 
   const loadTemplates = async () => {
+    if (!currentProject) return
     try {
-      const res = await api.get(`/api/templates/${projectId}`)
+      const res = await api.get(`/api/templates/${currentProject.id}`)
       setTemplates(res.data)
     } catch (err) {
       console.error(err)
@@ -60,13 +52,15 @@ export default function Templates() {
     try {
       if (editingId) {
         await api.put(`/api/templates/${editingId}`, { name, subject, body_html: bodyHtml })
+        setToast('Template updated')
       } else {
         await api.post('/api/templates', {
-          project_id: projectId,
+          project_id: currentProject!.id,
           name,
           subject,
           body_html: bodyHtml,
         })
+        setToast('Template created')
       }
       resetForm()
       loadTemplates()
@@ -86,33 +80,28 @@ export default function Templates() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this template?')) return
     await api.delete(`/api/templates/${id}`)
+    setToast('Template deleted')
     loadTemplates()
+  }
+
+  if (!currentProject) {
+    return <p className="text-gray-500">Create a project first.</p>
   }
 
   return (
     <div>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Templates</h1>
-        <div className="flex gap-3">
-          <select
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            className="border rounded px-3 py-2 text-sm"
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => { resetForm(); setShowForm(true) }}
-            className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
-          >
-            New Template
-          </button>
-        </div>
+        <button
+          onClick={() => { resetForm(); setShowForm(true) }}
+          className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+        >
+          New Template
+        </button>
       </div>
 
-      {/* template form */}
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="font-semibold mb-3">{editingId ? 'Edit Template' : 'Create Template'}</h2>
@@ -142,7 +131,6 @@ export default function Templates() {
               className="border rounded px-3 py-2 text-sm h-40 font-mono"
               required
             />
-            {/* live preview */}
             {bodyHtml && (
               <div className="border rounded p-3">
                 <p className="text-xs text-gray-400 mb-2">Preview:</p>
@@ -159,7 +147,6 @@ export default function Templates() {
         </div>
       )}
 
-      {/* template list */}
       <div className="bg-white rounded-lg shadow">
         {templates.length === 0 ? (
           <p className="p-6 text-gray-400 text-sm">No templates yet</p>
