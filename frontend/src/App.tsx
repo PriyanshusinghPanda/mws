@@ -8,6 +8,8 @@ import Emails from './pages/Emails'
 import EmailDetail from './pages/EmailDetail'
 import Templates from './pages/Templates'
 import ConnectEmail from './pages/ConnectEmail'
+import Jobs from './pages/Jobs'
+import JobDetail from './pages/JobDetail'
 import Login from './pages/Login'
 import Register from './pages/Register'
 
@@ -34,6 +36,8 @@ function App() {
             <Route path="emails/:emailId" element={<EmailDetail />} />
             <Route path="templates" element={<Templates />} />
             <Route path="connect-email" element={<ConnectEmail />} />
+            <Route path="jobs" element={<Jobs />} />
+            <Route path="jobs/:jobId" element={<JobDetail />} />
           </Route>
         </Routes>
       </AuthProvider>
