@@ -10,6 +10,7 @@ import Templates from './pages/Templates'
 import ConnectEmail from './pages/ConnectEmail'
 import Jobs from './pages/Jobs'
 import JobDetail from './pages/JobDetail'
+import DeadLetterQueue from './pages/DeadLetterQueue'
 import Login from './pages/Login'
 import Register from './pages/Register'
 
@@ -38,6 +39,7 @@ function App() {
             <Route path="connect-email" element={<ConnectEmail />} />
             <Route path="jobs" element={<Jobs />} />
             <Route path="jobs/:jobId" element={<JobDetail />} />
+            <Route path="dlq" element={<DeadLetterQueue />} />
           </Route>
         </Routes>
       </AuthProvider>
