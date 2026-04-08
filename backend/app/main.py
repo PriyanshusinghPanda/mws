@@ -7,6 +7,7 @@ from app.api.routes.emails import router as emails_router
 from app.api.routes.templates import router as templates_router
 from app.api.routes.smtp import router as smtp_router
 from app.api.routes.jobs import router as jobs_router
+from app.api.routes.analytics import router as analytics_router
 
 app = FastAPI(
     title="Mini AWS",
@@ -28,6 +29,7 @@ app.include_router(emails_router)
 app.include_router(templates_router)
 app.include_router(smtp_router)
 app.include_router(jobs_router)
+app.include_router(analytics_router)
 
 
 @app.get("/health")
