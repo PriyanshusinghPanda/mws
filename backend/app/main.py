@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+
+from app.core.exceptions import validation_exception_handler, generic_exception_handler
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.projects import router as projects_router
@@ -22,6 +25,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
 app.include_router(auth_router)
 app.include_router(projects_router)
