@@ -17,6 +17,7 @@ node_modules/
 # ide
 .vscode/
 .idea/
+.claude/
 
 # docker
 *.log
