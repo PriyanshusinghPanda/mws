@@ -1,21 +1,25 @@
 import asyncio
-from app.services.email_queue import enqueue_email
-
-MAX_RETRIES = 3
 
 
-def get_backoff_delay(attempt: int) -> float:
-    """exponential backoff: 2s, 4s, 8s"""
-    return 2 ** attempt
+class RetryHandler:
+    """handles retry logic with exponential backoff"""
+
+    def __init__(self, max_retries: int = 3, base_delay: float = 2.0):
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+
+    def get_delay(self, attempt: int) -> float:
+        """exponential backoff: 2s, 4s, 8s..."""
+        return self.base_delay ** attempt
+
+    def should_retry(self, attempt: int) -> bool:
+        return attempt < self.max_retries
+
+    async def wait_before_retry(self, attempt: int):
+        delay = self.get_delay(attempt)
+        await asyncio.sleep(delay)
 
 
-async def schedule_retry(email_id: str, attempt: int):
-    """wait with backoff then re-queue the email"""
-    if attempt >= MAX_RETRIES:
-        return False
-
-    delay = get_backoff_delay(attempt)
-    print(f"retrying email {email_id} in {delay}s (attempt {attempt + 1})")
-    await asyncio.sleep(delay)
-    await enqueue_email(email_id)
-    return True
+# default retry handlers
+email_retry_handler = RetryHandler(max_retries=3, base_delay=2.0)
+job_retry_handler = RetryHandler(max_retries=3, base_delay=2.0)

@@ -1,30 +1,28 @@
 import uuid
-import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select
 from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.account import Account
 from app.models.project import Project
-from app.models.job import Job, JobRun, DeadLetterEntry
-from app.services.cron_utils import is_valid_cron, get_next_run
+from app.services.job_service import JobService, InvalidJobTypeError, JobNotFoundError
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
 class CreateJobRequest(BaseModel):
     project_id: uuid.UUID
-    type: str  # "http" or "email"
+    type: str
     callback_url: str | None = None
     payload: dict | None = None
-    cron_expr: str | None = None  # for recurring jobs
-    run_at: datetime | None = None  # for one-time scheduled jobs
-    delay_seconds: int | None = None  # for delayed jobs
+    cron_expr: str | None = None
+    run_at: datetime | None = None
+    delay_seconds: int | None = None
 
 
 class JobResponse(BaseModel):
@@ -65,55 +63,38 @@ class DeadLetterResponse(BaseModel):
         from_attributes = True
 
 
+async def _verify_project(project_id: uuid.UUID, account: Account, db: AsyncSession) -> None:
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.account_id == account.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
 @router.post("", response_model=JobResponse, status_code=201)
 async def create_job(
     body: CreateJobRequest,
     account: Account = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # verify project ownership
-    proj = await db.execute(
-        select(Project).where(Project.id == body.project_id, Project.account_id == account.id)
-    )
-    if not proj.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Project not found")
+    await _verify_project(body.project_id, account, db)
 
-    if body.type not in ("http", "email"):
-        raise HTTPException(status_code=400, detail="Job type must be 'http' or 'email'")
-
-    if body.type == "http" and not body.callback_url:
-        raise HTTPException(status_code=400, detail="callback_url is required for http jobs")
-
-    # figure out when to run
-    next_run_at = None
-    cron_expr = None
-
-    if body.cron_expr:
-        if not is_valid_cron(body.cron_expr):
-            raise HTTPException(status_code=400, detail="Invalid cron expression")
-        cron_expr = body.cron_expr
-        next_run_at = get_next_run(cron_expr)
-    elif body.run_at:
-        next_run_at = body.run_at
-    elif body.delay_seconds:
-        next_run_at = datetime.now(timezone.utc) + timedelta(seconds=body.delay_seconds)
-    else:
-        # run immediately
-        next_run_at = datetime.now(timezone.utc)
-
-    job = Job(
-        project_id=body.project_id,
-        type=body.type,
-        cron_expr=cron_expr,
-        next_run_at=next_run_at,
-        callback_url=body.callback_url,
-        payload=json.dumps(body.payload) if body.payload else None,
-        status="active",
-    )
-    db.add(job)
-    await db.commit()
-    await db.refresh(job)
-    return job
+    service = JobService(db)
+    try:
+        job = await service.create_job(
+            project_id=body.project_id,
+            job_type=body.type,
+            callback_url=body.callback_url,
+            payload=body.payload,
+            cron_expr=body.cron_expr,
+            run_at=body.run_at,
+            delay_seconds=body.delay_seconds,
+        )
+        return job
+    except InvalidJobTypeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{project_id}", response_model=list[JobResponse])
@@ -122,16 +103,9 @@ async def list_jobs(
     account: Account = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    proj = await db.execute(
-        select(Project).where(Project.id == project_id, Project.account_id == account.id)
-    )
-    if not proj.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    result = await db.execute(
-        select(Job).where(Job.project_id == project_id).order_by(desc(Job.created_at))
-    )
-    return result.scalars().all()
+    await _verify_project(project_id, account, db)
+    service = JobService(db)
+    return await service.list_jobs(project_id)
 
 
 @router.get("/detail/{job_id}", response_model=JobResponse)
@@ -140,8 +114,8 @@ async def get_job(
     account: Account = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job = result.scalar_one_or_none()
+    service = JobService(db)
+    job = await service.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -153,18 +127,14 @@ async def cancel_job(
     account: Account = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
+    service = JobService(db)
+    try:
+        await service.cancel_job(job_id)
+        return {"detail": "Job cancelled"}
+    except JobNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status == "cancelled":
-        raise HTTPException(status_code=400, detail="Job already cancelled")
-
-    job.status = "cancelled"
-    job.next_run_at = None
-    await db.commit()
-    return {"detail": "Job cancelled"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/runs/{job_id}", response_model=list[JobRunResponse])
@@ -173,10 +143,8 @@ async def get_job_runs(
     account: Account = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(JobRun).where(JobRun.job_id == job_id).order_by(desc(JobRun.started_at))
-    )
-    return result.scalars().all()
+    service = JobService(db)
+    return await service.get_runs(job_id)
 
 
 @router.get("/dlq/{project_id}", response_model=list[DeadLetterResponse])
@@ -185,12 +153,6 @@ async def get_dead_letter_queue(
     account: Account = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # get all DLQ entries for jobs in this project
-    result = await db.execute(
-        select(DeadLetterEntry)
-        .join(JobRun)
-        .join(Job)
-        .where(Job.project_id == project_id)
-        .order_by(desc(DeadLetterEntry.created_at))
-    )
-    return result.scalars().all()
+    await _verify_project(project_id, account, db)
+    service = JobService(db)
+    return await service.get_dead_letter_queue(project_id)

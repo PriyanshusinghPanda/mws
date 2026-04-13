@@ -1,16 +1,27 @@
-import json
-
 from app.core.redis import redis_client, EMAIL_QUEUE
 
 
-async def enqueue_email(email_id: str):
-    """push email id to redis queue for worker to pick up"""
-    await redis_client.lpush(EMAIL_QUEUE, email_id)
+class EmailQueue:
+    """redis-backed queue for email processing"""
+
+    def __init__(self, queue_name: str = EMAIL_QUEUE):
+        self.queue_name = queue_name
+
+    async def enqueue(self, email_id: str):
+        """push email id to the queue"""
+        await redis_client.lpush(self.queue_name, email_id)
+
+    async def dequeue(self, timeout: int = 5) -> str | None:
+        """pop an email id, blocks for timeout seconds"""
+        result = await redis_client.brpop(self.queue_name, timeout=timeout)
+        if result:
+            return result[1]
+        return None
+
+    async def size(self) -> int:
+        """get current queue size"""
+        return await redis_client.llen(self.queue_name)
 
 
-async def dequeue_email() -> str | None:
-    """pop an email id from the queue, blocks for 5s"""
-    result = await redis_client.brpop(EMAIL_QUEUE, timeout=5)
-    if result:
-        return result[1]
-    return None
+# default queue instance
+email_queue = EmailQueue()
